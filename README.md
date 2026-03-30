@@ -59,28 +59,13 @@ An MCP server exposes the context engine's capabilities to Claude Code and other
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────┐
-│            Next.js Webapp (Internal)          │
-│   Department selector → Query → Response      │
-└───────────────────┬──────────────────────────┘
-                    │
-┌───────────────────▼──────────────────────────┐
-│              Routing Layer                    │
-│  Reads query → selects relevant context files │
-│  Loads 1-3 files, never the full corpus       │
-└──────────┬─────────────────┬─────────────────┘
-           │                 │
-┌──────────▼──────┐ ┌────────▼────────────────┐
-│  Context Files  │ │   OpenAI Embeddings      │
-│  (structured    │ │   PostgreSQL (Prisma)    │
-│   markdown)     │ │   Semantic search        │
-└─────────────────┘ └─────────────────────────┘
-           │
-┌──────────▼──────────────────────────────────┐
-│              MCP Server                      │
-│  Exposes engine as tools for AI assistants   │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["Next.js Webapp\nDepartment selector · Query · Response"] --> B["Routing Layer\nSelects relevant context files\nLoads 1-3 files — never the full corpus"]
+    B --> C["Context Files\nStructured markdown\nSales · CS · PM · Marketing"]
+    B --> D["OpenAI Embeddings\nPostgreSQL · Prisma\nSemantic search"]
+    C --> E["MCP Server\nExposes engine as tools\nfor AI assistants"]
+    D --> E
 ```
 
 ---
