@@ -1,7 +1,7 @@
 # Case Study: LiveData AI Context Engine
 
 **Role:** Product Manager (spec + build)
-**Stack:** TypeScript, Next.js, PostgreSQL, OpenAI Embeddings, MCP, Prisma
+**Stack:** TypeScript, Next.js, PostgreSQL, AWS Bedrock Embeddings, MCP, Prisma
 **Status:** Live — widely adopted across the organization
 
 > This is a case study. No proprietary source code, customer data, or internal content is included. See `NOTICE.md`.
@@ -52,8 +52,25 @@ The underlying knowledge is maintained as structured markdown files covering:
 ### Webapp
 A Next.js interface for employees to interact with the engine, with role-appropriate views and query history.
 
-### MCP Server
-An MCP server exposes the context engine's capabilities to Claude Code and other AI tooling used internally — turning the knowledge base into a tool other AI systems can call.
+### MCP Server — Two Deployment Modes
+The MCP server is available in two forms depending on the user:
+
+- **Local server** — for developers using Claude Code, runs directly from the repo
+- **AWS Lambda + API Gateway** — serverless deployment for non-technical users; ~$0.50/month at typical usage, zero client-side updates when the knowledge base changes
+
+For non-technical users, a lightweight client proxy (`mcp-proxy`) handles the connection. It installs via `npm install -g` or a Windows batch installer, adds a single config entry to Claude Desktop, and requires no local database or git access. Users get access to the full engine without touching the codebase.
+
+### Automated Ingestion Pipeline & CI/CD
+The knowledge base stays current automatically. Three GitHub Actions workflows handle the full lifecycle:
+
+- **Re-chunk on merge** — when any context file changes, a workflow runs AWS CodeBuild to re-chunk and re-embed only the changed files (incremental mode), then posts a success/failure comment to the PR
+- **Manual pipeline trigger** — full re-ingestion with optional GitHub repo sync, monitoring build status for up to 30 minutes
+- **App Runner deploy** — on push to main, builds a Docker image, pushes to ECR, and deploys to AWS App Runner
+
+The ingestion pipeline itself handles: GitHub repo sync, semantic markdown chunking, PostgreSQL full-text search indexing, and AWS Bedrock embedding generation. Adding a new knowledge source is a config file change.
+
+### Template System
+Structured document generation for common outputs — briefing documents, competitive summaries, onboarding materials. Templates use intent detection (keyword and regex matching) to trigger automatically based on what the user is asking for. Each template is role-scoped, versioned, and tracks usage analytics including which context chunks were used and quality ratings.
 
 ### Feedback & Knowledge Maintenance System
 A self-improving loop that closes the gap between what the engine answers and what the knowledge base contains. Users flag problems directly from the chat interface; AI triages and routes changes into the knowledge base via GitHub PRs.
@@ -86,15 +103,17 @@ Lightweight thumbs-up/down on any response provides a quick quality signal witho
 flowchart TD
     A["Next.js Webapp\nDepartment selector · Query · Response\nFeedback form · Chunk flagging · Message rating"] --> B["Routing Layer\nSelects relevant context files\nLoads 1-3 files — never the full corpus"]
     B --> C["Context Files\nStructured markdown\nSales · CS · PM · Marketing"]
-    B --> D["OpenAI Embeddings\nPostgreSQL · Prisma\nSemantic search"]
-    C --> E["MCP Server\nExposes engine as tools\nfor AI assistants"]
+    B --> D["AWS Bedrock Embeddings\nPostgreSQL · Prisma\nSemantic search + full-text"]
+    C --> E["MCP Server\nLocal or AWS Lambda\nmcp-proxy for non-technical users"]
     D --> E
     A --> F["Feedback API\n/api/feedback · /api/admin/feedback\n/api/messages/rate"]
     F --> G["Claude Sonnet\nAI triage · Smart placement\nMINOR vs MAJOR classification"]
     G -->|MINOR — auto-approved| H["GitHub PR\nImmediate knowledge base update"]
     G -->|MAJOR — needs review| I["Admin Review Queue\nOverride placement · Approve · Reject"]
     I -->|approved| H
-    H --> C
+    H --> J["GitHub Actions\nRe-chunk on merge\nIncremental re-ingestion"]
+    J --> D
+    J --> C
 ```
 
 ### Feedback Triage Flow
@@ -127,6 +146,9 @@ Rather than ingesting unstructured documents and hoping embeddings catch everyth
 
 **4. MCP integration for composability**
 Building an MCP server meant the context engine could become a tool other internal AI systems call — Claude Code sessions, custom agents, future products — without duplicating the knowledge or the retrieval logic.
+
+**6. Two-tier MCP deployment for different audiences**
+Developers get a local MCP server that runs from the repo. Non-technical users — sales reps, CSMs, marketers — get the Lambda deployment via a lightweight proxy they install once. Same knowledge base, same tools, zero friction for the people who need it most.
 
 **5. Feedback as a product feature, not an afterthought**
 Most internal tools have no feedback loop — knowledge gets stale and no one knows. Building a structured feedback system with AI triage and GitHub PR creation turned the knowledge base into a living document. The MINOR/MAJOR split was a deliberate design choice: auto-approving small corrections removes friction for users while keeping human review on anything that could materially change how the engine responds.
